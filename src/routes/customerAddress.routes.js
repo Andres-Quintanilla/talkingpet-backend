@@ -4,7 +4,7 @@ import {
   getMyServiceAddress,
   upsertMyServiceAddress,
 } from "../controllers/customerAddress.controller.js";
-import { requireAuth } from "../middleware/auth.middleware.js"; // ajusta el path/nombre si tu middleware se llama distinto
+import { requireAuth } from "../middleware/auth.js";
 
 const router = Router();
 

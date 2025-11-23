@@ -1,10 +1,10 @@
 // src/controllers/customerAddress.controller.js
-import pool from "../db.js"; // ajusta si tu archivo de conexión se llama distinto
+import { pool } from "../config/db.js";
 
 // GET /api/customers/service-address
 export const getMyServiceAddress = async (req, res) => {
   try {
-    const idCliente = req.user?.id; // FK a usuario.id
+    const idCliente = req.user?.id;
 
     if (!idCliente) {
       return res.status(401).json({ message: "No autenticado" });

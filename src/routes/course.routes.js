@@ -9,18 +9,17 @@ const r = Router();
 const EMPLEADO_ROLES = [
   'admin',
   'empleado',
-  'empleado_peluquero',
-  'empleado_veterinario',
-  'empleado_adiestrador',
 ];
 
 // ---------- PÚBLICO ----------
-r.get('/', ctrl.listPublic);          // listado cursos publicados
-r.get('/:id', ctrl.getById);          // detalle curso público
+// listado cursos publicados
+r.get('/', ctrl.list);       
+// detalle curso público (debe ir al final de las rutas específicas)
+r.get('/:id', ctrl.getById);
 
 // ---------- ADMIN / EMPLEADO ----------
 
-// listado completo para ADMIN (ya lo usabas)
+// listado completo para ADMIN
 r.get(
   '/admin/list',
   requireAuth,
