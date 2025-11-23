@@ -1,3 +1,4 @@
+// src/index.js (o el archivo principal de tu API)
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -21,6 +22,7 @@ import chatRoutes from "./routes/chat.routes.js";
 import schedulerRoutes from "./routes/scheduler.routes.js";
 import medicalRoutes from "./routes/medical.routes.js";
 import cryptoPaymentRoutes from "./routes/crypto-payment.routes.js";
+import customerAddressRoutes from "./routes/customerAddress.routes.js";
 
 import { seoHeaders, gzipCompression } from "./middleware/seo-headers.js";
 import { notFound, errorHandler } from "./middleware/errors.js";
@@ -32,11 +34,13 @@ const ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
 
 console.log("CORS_ORIGIN usado por el backend:", ORIGIN);
 
+// Stripe webhook
 app.use(
   "/api/payments/stripe/webhook",
   express.raw({ type: "application/json" })
 );
 
+// Crypto webhook
 app.use(
   "/api/payments/crypto/webhook",
   express.raw({ type: "application/json" }),
@@ -46,6 +50,7 @@ app.use(
   }
 );
 
+// Normalización de URL + exclusiones
 app.use((req, res, next) => {
   const p = req.path;
   if (
@@ -102,6 +107,7 @@ app.use("/api/chat", chatRoutes);
 app.use("/api/scheduler", schedulerRoutes);
 app.use("/api/medical", medicalRoutes);
 app.use("/api/payments/crypto", cryptoPaymentRoutes);
+app.use("/api/customers", customerAddressRoutes);
 
 app.use("/", seoRoutes);
 
