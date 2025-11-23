@@ -168,7 +168,21 @@ export async function createOrderFromPayload(req, res, next) {
         }
       }
 
-      // (Futuro) if (tipo === 'curso') { ... lógica de inscripción post-pago ... }
+      // 2.3) Si es CURSO → guardar referencia para inscripción post-pago
+      // NO inscribimos aquí, se inscribirá cuando el pago sea confirmado
+      if (tipo === 'curso') {
+        const cursoId = it.curso_id || it.id;
+        
+        if (cursoId) {
+          // Guardar en pedido_item con una referencia al curso
+          await client.query(
+            `UPDATE pedido_item 
+             SET producto_id = $1
+             WHERE pedido_id = $2 AND nombre_producto = $3`,
+            [cursoId, pedidoId, it.nombre]
+          );
+        }
+      }
     }
 
     await client.query('COMMIT');

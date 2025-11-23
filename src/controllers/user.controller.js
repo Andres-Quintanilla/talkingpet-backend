@@ -1,5 +1,5 @@
 import { pool } from '../config/db.js';
-import bcrypt from 'bcryptjs';
+import bcrypt from 'bcrypt';
 
 export async function getMyProfile(req, res, next) {
   try {
