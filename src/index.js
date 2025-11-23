@@ -34,22 +34,6 @@ const ORIGIN = process.env.CORS_ORIGIN || "http://localhost:5173";
 
 console.log("CORS_ORIGIN usado por el backend:", ORIGIN);
 
-// Stripe webhook
-app.use(
-  "/api/payments/stripe/webhook",
-  express.raw({ type: "application/json" })
-);
-
-// Crypto webhook
-app.use(
-  "/api/payments/crypto/webhook",
-  express.raw({ type: "application/json" }),
-  (req, res, next) => {
-    req.rawBody = req.body.toString("utf8");
-    next();
-  }
-);
-
 // Normalización de URL + exclusiones
 app.use((req, res, next) => {
   const p = req.path;
@@ -83,6 +67,22 @@ app.use(morgan("dev"));
 app.use(gzipCompression);
 app.use(seoHeaders());
 
+// Webhooks con raw body (ANTES del express.json)
+app.use(
+  "/api/payments/stripe/webhook",
+  express.raw({ type: "application/json" })
+);
+
+app.use(
+  "/api/payments/crypto/webhook",
+  express.raw({ type: "application/json" }),
+  (req, res, next) => {
+    req.rawBody = req.body.toString("utf8");
+    next();
+  }
+);
+
+// JSON parser para todas las demás rutas
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
