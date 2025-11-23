@@ -55,27 +55,33 @@ export async function listAll(req, res, next) {
         s.nombre AS servicio_nombre, 
         s.tipo AS servicio_tipo, 
         m.nombre AS mascota_nombre,
-        u.nombre AS cliente_nombre,
+        u.nombre   AS cliente_nombre,
         u.telefono AS cliente_telefono
       FROM cita c
-      LEFT JOIN servicio s ON s.id=c.servicio_id
-      LEFT JOIN mascota m ON m.id=c.mascota_id
-      LEFT JOIN usuario u ON u.id=c.usuario_id
+      LEFT JOIN servicio s ON s.id = c.servicio_id
+      LEFT JOIN mascota  m ON m.id = c.mascota_id
+      LEFT JOIN usuario  u ON u.id = c.usuario_id
     `;
     const params = [];
 
     if (rol !== 'admin') {
-      let tipoServicio;
+      let tipoServicio = null;
+
       if (rol === 'empleado_veterinario') tipoServicio = 'veterinaria';
-      else if (rol === 'empleado_peluquero') tipoServicio = 'peluqueria'; 
+      else if (rol === 'empleado_peluquero') tipoServicio = 'peluqueria';
       else if (rol === 'empleado_adiestrador') tipoServicio = 'adiestramiento';
 
       if (tipoServicio === 'peluqueria') {
+        // peluquería ve peluquería + baño
         query += ` WHERE (s.tipo = 'peluqueria' OR s.tipo = 'baño')`;
       } else if (tipoServicio) {
         params.push(tipoServicio);
         query += ` WHERE s.tipo = $1`;
+      } else if (rol === 'empleado') {
+        // empleado genérico: ve TODO (sin filtro)
+        // no añadimos WHERE aquí
       } else {
+        // cualquier otro rol no debería ver nada
         query += ` WHERE 1=0`;
       }
     }

@@ -1,26 +1,60 @@
+// src/routes/course.routes.js
 import { Router } from 'express';
-import * as c from '../controllers/course.controller.js';
+import * as ctrl from '../controllers/course.controller.js';
 import { requireAuth } from '../middleware/auth.js';
 import { requireRole } from '../middleware/roles.js';
 
 const r = Router();
 
-r.get('/', c.list); 
+const EMPLEADO_ROLES = [
+  'admin',
+  'empleado',
+];
 
-r.get('/mine', requireAuth, c.mine);                
-r.post('/:id/inscribirme', requireAuth, c.enroll);     
+// ---------- PÚBLICO ----------
+// listado cursos publicados
+r.get('/', ctrl.list);       
+// detalle curso público (debe ir al final de las rutas específicas)
+r.get('/:id', ctrl.getById);
 
+// ---------- ADMIN / EMPLEADO ----------
+
+// listado completo para ADMIN
 r.get(
   '/admin/list',
   requireAuth,
   requireRole('admin'),
-  c.adminList
+  ctrl.adminList
 );
 
-r.get('/:id', c.getById);                              
+// listado completo para EMPLEADO (reusa adminList)
+r.get(
+  '/employee/list',
+  requireAuth,
+  requireRole(...EMPLEADO_ROLES),
+  ctrl.adminList
+);
 
-r.post('/', requireAuth, requireRole('admin'), c.create);
-r.put('/:id', requireAuth, requireRole('admin'), c.update);
-r.delete('/:id', requireAuth, requireRole('admin'), c.remove);
+// CRUD solo admin
+r.post(
+  '/',
+  requireAuth,
+  requireRole('admin'),
+  ctrl.create
+);
+
+r.put(
+  '/:id',
+  requireAuth,
+  requireRole('admin'),
+  ctrl.update
+);
+
+r.delete(
+  '/:id',
+  requireAuth,
+  requireRole('admin'),
+  ctrl.remove
+);
 
 export default r;
