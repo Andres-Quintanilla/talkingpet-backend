@@ -21,7 +21,6 @@ const r = Router();
  */
 r.post('/', requireAuth, ctrl.createOrderFromPayload);
 
-
 /**
  * =====================================================
  *                     ADMIN
@@ -44,7 +43,6 @@ r.get(
   ctrl.listAll
 );
 
-
 /**
  * =====================================================
  *              CHECKOUT ANTIGUO (CARRO)
@@ -53,7 +51,6 @@ r.get(
  *  POST /api/orders/checkout
  */
 r.post('/checkout', requireAuth, ctrl.checkoutFromCart);
-
 
 /**
  * =====================================================
@@ -65,6 +62,13 @@ r.post('/checkout', requireAuth, ctrl.checkoutFromCart);
 // GET /api/orders/mine
 r.get('/mine', requireAuth, ctrl.myOrders);
 
+/**
+ * =====================================================
+ *        MARCAR PEDIDO COMO PAGADO (TARJETA / QR)
+ * =====================================================
+ *  POST /api/orders/:id/mark-paid
+ */
+r.post('/:id/mark-paid', requireAuth, ctrl.markAsPaid);
 
 /**
  * =====================================================
@@ -73,13 +77,11 @@ r.get('/mine', requireAuth, ctrl.myOrders);
  */
 r.get('/:id/track', requireAuth, ctrl.track);
 
-
 /**
  * =====================================================
  *           DETALLE DE UN PEDIDO (CLIENTE / ADMIN)
  * =====================================================
  */
 r.get('/:id', requireAuth, ctrl.getById);
-
 
 export default r;

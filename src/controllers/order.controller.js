@@ -321,14 +321,30 @@ export async function track(req, res, next) {
 
 export async function getAdminSummary(req, res, next) {
   try {
-    const { rows: kpiRows } = await pool.query(`
-      SELECT
-        COUNT(*)                                        AS total_pedidos,
-        COUNT(*) FILTER (WHERE estado = 'pagado')       AS pedidos_pagados,
-        COALESCE(SUM(total) FILTER (WHERE estado = 'pagado'), 0) AS total_ingresos
-      FROM pedido
+    // Pedidos totales
+    const { rows: pedidosRows } = await pool.query(`
+      SELECT 
+        COUNT(*) AS total_pedidos
+      FROM pedido;
     `);
 
+    // Ingresos reales (solo pagos completados)
+    const { rows: ingresosRows } = await pool.query(`
+      SELECT 
+        COALESCE(SUM(monto), 0) AS total_ingresos
+      FROM pago
+      WHERE estado = 'pagado';
+    `);
+
+    // Pedidos pagados (según pagos exitosos)
+    const { rows: pedidosPagadosRows } = await pool.query(`
+      SELECT 
+        COUNT(DISTINCT pedido_id) AS pedidos_pagados
+      FROM pago
+      WHERE estado = 'pagado';
+    `);
+
+    // Últimos pedidos
     const { rows: recientes } = await pool.query(`
       SELECT
         p.id,
@@ -339,14 +355,49 @@ export async function getAdminSummary(req, res, next) {
       FROM pedido p
       LEFT JOIN usuario u ON u.id = p.usuario_id
       ORDER BY p.fecha_pedido DESC
-      LIMIT 5
+      LIMIT 5;
     `);
 
     res.json({
-      kpis: kpiRows[0],
+      kpis: {
+        total_pedidos: Number(pedidosRows[0].total_pedidos),
+        pedidos_pagados: Number(pedidosPagadosRows[0].pedidos_pagados),
+        total_ingresos: Number(ingresosRows[0].total_ingresos),
+      },
       recientes,
     });
   } catch (err) {
     next(err);
+  }
+}
+
+// Marca un pedido como pagado (cliente o admin)
+export async function markAsPaid(req, res, next) {
+  try {
+    const id = Number(req.params.id);
+    if (Number.isNaN(id)) {
+      return res.status(400).json({ error: 'ID de pedido inválido' });
+    }
+
+    // Si es admin puede marcar cualquier pedido
+    // Si es cliente, solo sus propios pedidos
+    const isAdmin = req.user.rol === 'admin';
+
+    const { rows } = await pool.query(
+      `UPDATE pedido
+       SET estado = 'pagado'
+       WHERE id = $1
+         AND ($2 = TRUE OR usuario_id = $3)
+       RETURNING *`,
+      [id, isAdmin, req.user.id]
+    );
+
+    if (!rows[0]) {
+      return res.status(404).json({ error: 'Pedido no encontrado' });
+    }
+
+    res.json(rows[0]);
+  } catch (e) {
+    next(e);
   }
 }
