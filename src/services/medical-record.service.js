@@ -55,14 +55,14 @@ export async function registrarVacuna(datos) {
     const query = `
       INSERT INTO mascota_vacuna (
         mascota_id, vacuna, fecha_aplicacion, proxima_dosis,
-        veterinario, clinica, lote, observaciones, creado_por
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        veterinario, clinica, observaciones
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
 
     const { rows } = await pool.query(query, [
       mascotaId, vacuna, fechaAplicacion, proximaDosis,
-      veterinario, clinica, lote, observaciones, creadoPor
+      veterinario, clinica, observaciones
     ]);
 
     // Crear alerta automática si hay próxima dosis
@@ -107,16 +107,14 @@ export async function actualizarVacuna(vacunaId, datos) {
         proxima_dosis = COALESCE($3, proxima_dosis),
         veterinario = COALESCE($4, veterinario),
         clinica = COALESCE($5, clinica),
-        lote = COALESCE($6, lote),
-        observaciones = COALESCE($7, observaciones),
-        actualizado_en = NOW()
-      WHERE id = $8
+        observaciones = COALESCE($6, observaciones)
+      WHERE id = $7
       RETURNING *
     `;
 
     const { rows } = await pool.query(query, [
       vacuna, fechaAplicacion, proximaDosis, veterinario, 
-      clinica, lote, observaciones, vacunaId
+      clinica, observaciones, vacunaId
     ]);
 
     return { exito: true, vacuna: rows[0] };
@@ -147,10 +145,7 @@ export async function eliminarVacuna(vacunaId) {
 export async function obtenerConsultasMascota(mascotaId) {
   try {
     const query = `
-      SELECT 
-        c.*,
-        (SELECT COUNT(*) FROM mascota_medicamento 
-         WHERE consulta_id = c.id AND activo = true) as medicamentos_activos
+      SELECT c.*
       FROM mascota_consulta c
       WHERE c.mascota_id = $1
       ORDER BY c.fecha_consulta DESC
@@ -188,17 +183,15 @@ export async function registrarConsulta(datos) {
   try {
     const query = `
       INSERT INTO mascota_consulta (
-        mascota_id, cita_id, veterinario, clinica, fecha_consulta,
-        motivo, diagnostico, tratamiento, peso_kg, temperatura_celsius,
-        frecuencia_cardiaca, observaciones, proxima_consulta, creado_por
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        mascota_id, veterinario, clinica, fecha_consulta,
+        motivo, diagnostico, tratamiento, peso_kg
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       RETURNING *
     `;
 
     const { rows } = await pool.query(query, [
-      mascotaId, citaId, veterinario, clinica, fechaConsulta,
-      motivo, diagnostico, tratamiento, pesoKg, temperaturaCelsius,
-      frecuenciaCardiaca, observaciones, proximaConsulta, creadoPor
+      mascotaId, veterinario, clinica, fechaConsulta,
+      motivo, diagnostico, tratamiento, pesoKg
     ]);
 
     // Registrar peso si se proporcionó
@@ -239,11 +232,9 @@ export async function registrarConsulta(datos) {
 export async function obtenerMedicamentosActivos(mascotaId) {
   try {
     const query = `
-      SELECT m.*, c.veterinario, c.clinica
+      SELECT m.*
       FROM mascota_medicamento m
-      LEFT JOIN mascota_consulta c ON m.consulta_id = c.id
       WHERE m.mascota_id = $1 
-      AND m.activo = true
       AND (m.fecha_fin IS NULL OR m.fecha_fin >= CURRENT_DATE)
       ORDER BY m.fecha_inicio DESC
     `;
@@ -276,15 +267,15 @@ export async function registrarMedicamento(datos) {
   try {
     const query = `
       INSERT INTO mascota_medicamento (
-        mascota_id, consulta_id, medicamento, dosis, frecuencia,
-        fecha_inicio, fecha_fin, via_administracion, indicaciones, recordatorio
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        mascota_id, medicamento, dosis, frecuencia,
+        fecha_inicio, fecha_fin, indicaciones
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
       RETURNING *
     `;
 
     const { rows } = await pool.query(query, [
-      mascotaId, consultaId, medicamento, dosis, frecuencia,
-      fechaInicio, fechaFin, viaAdministracion, indicaciones, recordatorio
+      mascotaId, medicamento, dosis, frecuencia,
+      fechaInicio, fechaFin, indicaciones
     ]);
 
     // Crear alerta si tiene recordatorio
@@ -331,18 +322,14 @@ export async function actualizarMedicamento(medicamentoId, datos) {
         frecuencia = COALESCE($3, frecuencia),
         fecha_inicio = COALESCE($4, fecha_inicio),
         fecha_fin = COALESCE($5, fecha_fin),
-        via_administracion = COALESCE($6, via_administracion),
-        indicaciones = COALESCE($7, indicaciones),
-        recordatorio = COALESCE($8, recordatorio),
-        activo = COALESCE($9, activo),
-        actualizado_en = NOW()
-      WHERE id = $10
+        indicaciones = COALESCE($6, indicaciones)
+      WHERE id = $7
       RETURNING *
     `;
 
     const { rows } = await pool.query(query, [
       medicamento, dosis, frecuencia, fechaInicio, fechaFin,
-      viaAdministracion, indicaciones, recordatorio, activo, medicamentoId
+      indicaciones, medicamentoId
     ]);
 
     return { exito: true, medicamento: rows[0] };
@@ -428,8 +415,15 @@ export async function obtenerAlergiasMascota(mascotaId) {
   try {
     const query = `
       SELECT * FROM mascota_alergia
-      WHERE mascota_id = $1 AND activa = true
-      ORDER BY severidad DESC, fecha_diagnostico DESC
+      WHERE mascota_id = $1
+      ORDER BY 
+        CASE severidad 
+          WHEN 'severa' THEN 1 
+          WHEN 'moderada' THEN 2 
+          WHEN 'leve' THEN 3 
+          ELSE 4 
+        END,
+        creado_en DESC
     `;
     
     const { rows } = await pool.query(query, [mascotaId]);
@@ -457,15 +451,13 @@ export async function registrarAlergia(datos) {
   try {
     const query = `
       INSERT INTO mascota_alergia (
-        mascota_id, tipo, alergia, severidad, sintomas,
-        fecha_diagnostico, observaciones
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        mascota_id, tipo, alergia, severidad, sintomas, observaciones
+      ) VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING *
     `;
 
     const { rows } = await pool.query(query, [
-      mascotaId, tipo, alergia, severidad, sintomas,
-      fechaDiagnostico, observaciones
+      mascotaId, tipo, alergia, severidad, sintomas, observaciones
     ]);
 
     return { exito: true, alergia: rows[0] };
