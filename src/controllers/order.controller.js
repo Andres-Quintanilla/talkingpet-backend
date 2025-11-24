@@ -47,10 +47,10 @@ export async function createOrderFromPayload(req, res, next) {
 
     const {
       items = [],
-      subtotal = 0, // ahora mismo es informativo, usamos total
+      subtotal = 0,
       shipping = 0,
       total = 0,
-      metodo_pago = 'efectivo', // por ahora solo referencial
+      metodo_pago = 'efectivo',
       direccion_envio = null,
     } = req.body;
 
@@ -76,19 +76,27 @@ export async function createOrderFromPayload(req, res, next) {
       const qty = Number(it.qty || 1);
       const precioUnit = Number(it.precio || 0);
 
-      // 2.1) Crear snapshot en pedido_item
+      // decidir ids según tipo
+      const productoId =
+        tipo === 'producto' ? (it.producto_id || it.id) : null;
+      const cursoId =
+        tipo === 'curso' ? (it.curso_id || it.id) : null;
+
+      // 2.1) Crear snapshot en pedido_item (ahora con curso_id)
       await client.query(
         `INSERT INTO pedido_item (
            pedido_id,
            producto_id,
+           curso_id,
            nombre_producto,
            precio_unitario,
            cantidad
          )
-         VALUES ($1, $2, $3, $4, $5)`,
+         VALUES ($1, $2, $3, $4, $5, $6)`,
         [
           pedidoId,
-          tipo === 'producto' ? (it.producto_id || it.id) : null,
+          productoId,
+          cursoId,
           it.nombre || (tipo === 'servicio' ? 'Servicio' : 'Item'),
           precioUnit,
           qty,
@@ -168,20 +176,20 @@ export async function createOrderFromPayload(req, res, next) {
         }
       }
 
-      // 2.3) Si es CURSO → guardar referencia para inscripción post-pago
-      // NO inscribimos aquí, se inscribirá cuando el pago sea confirmado
-      if (tipo === 'curso') {
-        const cursoId = it.curso_id || it.id;
-        
-        if (cursoId) {
-          // Guardar en pedido_item con una referencia al curso
-          await client.query(
-            `UPDATE pedido_item 
-             SET producto_id = $1
-             WHERE pedido_id = $2 AND nombre_producto = $3`,
-            [cursoId, pedidoId, it.nombre]
-          );
-        }
+      // 2.3) Si es CURSO → crear inscripción en inscripcion_curso
+      if (tipo === 'curso' && cursoId) {
+        await client.query(
+          `INSERT INTO inscripcion_curso
+             (usuario_id, curso_id, titulo_snapshot, precio_snapshot)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (usuario_id, curso_id) DO NOTHING`,
+          [
+            userId,
+            cursoId,
+            it.nombre || 'Curso',
+            precioUnit,
+          ]
+        );
       }
     }
 

@@ -6,20 +6,29 @@ import { requireRole } from '../middleware/roles.js';
 
 const r = Router();
 
-const EMPLEADO_ROLES = [
-  'admin',
-  'empleado',
-];
+const EMPLEADO_ROLES = ['admin', 'empleado'];
+
+/**
+ * IMPORTANTE:
+ * Las rutas más específicas (como /mine, /admin/list, /:id/enroll)
+ * SIEMPRE deben ir ANTES de la ruta genérica '/:id'
+ */
 
 // ---------- PÚBLICO ----------
-// listado cursos publicados
-r.get('/', ctrl.list);       
-// detalle curso público (debe ir al final de las rutas específicas)
-r.get('/:id', ctrl.getById);
+
+// Lista de cursos publicados
+r.get('/', ctrl.list);
+
+// ---------- CLIENTE (AUTENTICADO) ----------
+
+// Mis cursos (los que están en inscripcion_curso)
+r.get('/mine', requireAuth, ctrl.mine);
+
+// Inscripción manual a un curso (también la usa el autoEnroll del front)
+r.post('/:id/enroll', requireAuth, ctrl.enroll);
 
 // ---------- ADMIN / EMPLEADO ----------
 
-// listado completo para ADMIN
 r.get(
   '/admin/list',
   requireAuth,
@@ -27,7 +36,6 @@ r.get(
   ctrl.adminList
 );
 
-// listado completo para EMPLEADO (reusa adminList)
 r.get(
   '/employee/list',
   requireAuth,
@@ -35,7 +43,12 @@ r.get(
   ctrl.adminList
 );
 
-// CRUD solo admin
+// ---------- DETALLE DE CURSO (PÚBLICO) ----------
+// ¡OJO! Esta va AL FINAL
+r.get('/:id', ctrl.getById);
+
+// ---------- CRUD ADMIN ----------
+
 r.post(
   '/',
   requireAuth,

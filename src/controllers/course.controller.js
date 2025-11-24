@@ -103,12 +103,14 @@ export async function getById(req, res, next) {
 export async function mine(req, res, next) {
   try {
     const { rows } = await pool.query(
-      `SELECT ic.id,
-              ic.curso_id,
-              COALESCE(c.titulo, ic.titulo_snapshot)  AS titulo,
-              COALESCE(c.precio, ic.precio_snapshot)  AS precio,
-              ic.progreso,
-              c.modalidad
+      `SELECT 
+          ic.id,
+          ic.curso_id,
+          COALESCE(c.titulo, ic.titulo_snapshot)  AS titulo,
+          COALESCE(c.precio, ic.precio_snapshot)  AS precio,
+          ic.progreso,
+          c.modalidad,
+          c.portada_url
        FROM inscripcion_curso ic
        LEFT JOIN curso c ON c.id = ic.curso_id
        WHERE ic.usuario_id = $1
@@ -120,6 +122,7 @@ export async function mine(req, res, next) {
     next(e);
   }
 }
+
 
 export async function enroll(req, res, next) {
   try {

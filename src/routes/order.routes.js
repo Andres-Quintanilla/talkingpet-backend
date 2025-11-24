@@ -7,13 +7,28 @@ import { requireRole } from '../middleware/roles.js';
 const r = Router();
 
 /**
- * Nuevo: checkout basado en los items que manda el front
- * (productos + servicios + cursos) -> crea pedido + pedido_item + cita(s)
- * POST /api/orders
+ * =====================================================
+ *     NUEVO CHECKOUT (PRODUCTOS + SERVICIOS + CURSOS)
+ * =====================================================
+ *
+ *  POST /api/orders
+ *  Crea un pedido con:
+ *   - pedido
+ *   - pedido_item
+ *   - cita(s) si hay servicios
+ *
+ *  NOTA: La inscripción a cursos se hace al confirmar pago.
  */
 r.post('/', requireAuth, ctrl.createOrderFromPayload);
 
-// Admin: KPIs y últimos pedidos
+
+/**
+ * =====================================================
+ *                     ADMIN
+ * =====================================================
+ */
+
+// KPIs de administración
 r.get(
   '/admin/summary',
   requireAuth,
@@ -21,25 +36,50 @@ r.get(
   ctrl.getAdminSummary
 );
 
-// Admin: listar todos los pedidos
+// Listar todos los pedidos (admin)
 r.get(
-  '/',
+  '/admin',
   requireAuth,
   requireRole('admin'),
   ctrl.listAll
 );
 
-// Checkout antiguo, basado en la tabla carrito/carrito_item
-// (lo mantenemos por compatibilidad, pero el front nuevo usará POST /api/orders)
+
+/**
+ * =====================================================
+ *              CHECKOUT ANTIGUO (CARRO)
+ * =====================================================
+ *  Esto es opcional, se mantiene por compatibilidad
+ *  POST /api/orders/checkout
+ */
 r.post('/checkout', requireAuth, ctrl.checkoutFromCart);
 
-// Pedidos del usuario logueado
+
+/**
+ * =====================================================
+ *               PEDIDOS DEL USUARIO (CLIENTE)
+ * =====================================================
+ */
+
+// Lista todos los pedidos del cliente actual
+// GET /api/orders/mine
 r.get('/mine', requireAuth, ctrl.myOrders);
 
-// Tracking de envío
+
+/**
+ * =====================================================
+ *                   TRACKING DE ENVÍO
+ * =====================================================
+ */
 r.get('/:id/track', requireAuth, ctrl.track);
 
-// Detalle de un pedido (cliente o admin)
+
+/**
+ * =====================================================
+ *           DETALLE DE UN PEDIDO (CLIENTE / ADMIN)
+ * =====================================================
+ */
 r.get('/:id', requireAuth, ctrl.getById);
+
 
 export default r;
