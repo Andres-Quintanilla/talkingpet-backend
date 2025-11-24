@@ -1,4 +1,31 @@
+// src/controllers/course.controller.js
 import { pool } from '../config/db.js';
+
+const API_BASE =
+  process.env.API_PUBLIC_BASE_URL ||
+  `http://localhost:${process.env.PORT || 4000}`;
+
+// Convierte rutas relativas (/uploads/...) en URLs completas
+function toPublicUrl(url) {
+  if (!url) return null;
+
+  // Ya absoluta
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return url;
+  }
+
+  // /uploads/archivo.mp4
+  if (url.startsWith('/')) {
+    return `${API_BASE}${url}`;
+  }
+
+  // uploads/archivo.mp4
+  if (url.startsWith('uploads/')) {
+    return `${API_BASE}/${url}`;
+  }
+
+  return url;
+}
 
 export async function list(_req, res, next) {
   try {
@@ -69,6 +96,10 @@ export async function getById(req, res, next) {
       return res.status(404).json({ error: 'Curso no encontrado' });
     }
 
+    // Normalizar URLs de portada y trailer
+    curso.portada_url = toPublicUrl(curso.portada_url);
+    curso.trailer_url = toPublicUrl(curso.trailer_url);
+
     let contenido = [];
     if (curso.modalidad === 'virtual') {
       const { rows } = await pool.query(
@@ -78,12 +109,18 @@ export async function getById(req, res, next) {
          ORDER BY id ASC`,
         [id]
       );
-      contenido = rows;
 
+      // Normalizamos URL de cada contenido
+      contenido = rows.map((r) => ({
+        ...r,
+        url: toPublicUrl(r.url),
+      }));
+
+      // Si no hay contenido aún, usamos el trailer como "lección 0"
       if (contenido.length === 0 && curso.trailer_url) {
         contenido = [
           {
-            id: `trailer-${curso.id}`,     
+            id: `trailer-${curso.id}`,
             curso_id: curso.id,
             tipo: 'video',
             titulo: 'Introducción / Trailer',
@@ -122,7 +159,6 @@ export async function mine(req, res, next) {
     next(e);
   }
 }
-
 
 export async function enroll(req, res, next) {
   try {
@@ -164,6 +200,12 @@ export async function create(req, res, next) {
       trailer_url = null,
     } = req.body;
 
+    // Si viene un archivo (ej: video subido directo a este endpoint)
+    let finalTrailerUrl = trailer_url || null;
+    if (req.file && req.file.filename) {
+      finalTrailerUrl = `${API_BASE}/uploads/${req.file.filename}`;
+    }
+
     const { rows } = await pool.query(
       `INSERT INTO curso
         (titulo, descripcion, estado, precio, fecha_publicacion,
@@ -182,7 +224,7 @@ export async function create(req, res, next) {
         cupos_totales,
         fecha_inicio_presencial,
         portada_url,
-        trailer_url,
+        finalTrailerUrl,
       ]
     );
 
@@ -207,17 +249,26 @@ export async function update(req, res, next) {
       trailer_url,
     } = req.body;
 
+    // Si viene string vacío o null → null
+    let finalTrailerUrl =
+      trailer_url && trailer_url.trim() !== "" ? trailer_url.trim() : null;
+
+    // Archivo subido → reemplazar totalmente
+    if (req.file && req.file.filename) {
+      finalTrailerUrl = `${API_BASE}/uploads/${req.file.filename}`;
+    }
+
     const { rows } = await pool.query(
       `UPDATE curso
-       SET titulo                  = COALESCE($2, titulo),
-           descripcion             = COALESCE($3, descripcion),
-           estado                  = COALESCE($4, estado),
-           precio                  = COALESCE($5, precio),
-           modalidad               = COALESCE($6, modalidad),
-           cupos_totales           = COALESCE($7, cupos_totales),
-           fecha_inicio_presencial = COALESCE($8, fecha_inicio_presencial),
-           portada_url             = COALESCE($9, portada_url),
-           trailer_url             = COALESCE($10, trailer_url)
+       SET titulo                  = $2,
+           descripcion             = $3,
+           estado                  = $4,
+           precio                  = $5,
+           modalidad               = $6,
+           cupos_totales           = $7,
+           fecha_inicio_presencial = $8,
+           portada_url             = $9,
+           trailer_url             = $10
        WHERE id = $1
        RETURNING *`,
       [
@@ -230,12 +281,12 @@ export async function update(req, res, next) {
         cupos_totales ?? null,
         fecha_inicio_presencial || null,
         portada_url || null,
-        trailer_url || null,
+        finalTrailerUrl,
       ]
     );
 
     if (!rows[0]) {
-      return res.status(404).json({ error: 'No encontrado' });
+      return res.status(404).json({ error: "No encontrado" });
     }
 
     res.json(rows[0]);
@@ -243,6 +294,7 @@ export async function update(req, res, next) {
     next(e);
   }
 }
+
 
 export async function remove(req, res, next) {
   try {

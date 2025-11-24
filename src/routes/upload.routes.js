@@ -1,9 +1,12 @@
+// src/routes/upload.routes.js
 import { Router } from 'express';
 import { requireAuth } from '../middleware/auth.js';
-import { requireRole } from '../middleware/roles.js';
+import { uploadOne } from '../controllers/upload.controller.js';
 import { uploader } from '../utils/upload.js';
-import * as ctrl from '../controllers/upload.controller.js';
 
 const r = Router();
-r.post('/', requireAuth, requireRole('admin'), uploader.single('file'), ctrl.uploadOne);
+
+// Sube UN archivo en el campo "file"
+r.post('/', requireAuth, uploader.single('file'), uploadOne);
+
 export default r;

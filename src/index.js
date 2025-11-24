@@ -1,4 +1,4 @@
-// src/index.js (o el archivo principal de tu API)
+// src/index.js
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
@@ -53,7 +53,17 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(helmet());
+// app.use(helmet());
+
+app.use(
+  helmet({
+    // Desactivar la política de recursos de mismo origen
+    // para que los videos/imágenes puedan usarse cross-origin
+    crossOriginResourcePolicy: false,
+    // (Opcional, pero recomendable) relajar también esto:
+    crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  })
+);
 
 app.use(
   cors({
@@ -86,12 +96,21 @@ app.use(
 app.use(express.json({ limit: "2mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// === RUTAS ESTÁTICAS ===
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-app.use("/uploads", express.static(path.join(__dirname, "..", "uploads")));
+// IMPORTANTE: misma carpeta que en upload.js (raíz del proyecto /uploads)
+// Si quieres, puedes ponerla también en .env como UPLOAD_DIR
+const uploadDir =
+  process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads");
+
+console.log("📂 Serviendo archivos de uploads desde:", uploadDir);
+
+app.use("/uploads", express.static(uploadDir));
 app.use("/static", express.static(path.join(__dirname, "..", "static")));
 
+// === RUTAS API ===
 app.use("/api/auth", authRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/products", productRoutes);
