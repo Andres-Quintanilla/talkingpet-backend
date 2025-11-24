@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { pool } from '../config/db.js';
 import { getSmartChatResponse } from '../services/aiChat.service.js';
+import { getGeminiChatResponse } from '../services/gemini-chat.service.js';
 import {
   sendEmail,
   sendWhatsApp,
@@ -55,11 +56,23 @@ export async function sendMessage(req, res, next) {
       content: row.contenido,
     }));
 
-    const assistantReply = await getSmartChatResponse(
-      message,
-      history,
-      userId
-    );
+    // Intentar usar Gemini primero, si falla usar el sistema basado en reglas
+    let assistantReply;
+    
+    // Temporalmente desactivar Gemini hasta obtener nueva API Key
+    const USAR_GEMINI = false; // Cambiar a true cuando tengas nueva API Key
+    
+    if (USAR_GEMINI) {
+      try {
+        assistantReply = await getGeminiChatResponse(message, history, userId);
+      } catch (geminiError) {
+        console.warn('Gemini no disponible, usando sistema de reglas');
+        assistantReply = await getSmartChatResponse(message, history, userId);
+      }
+    } else {
+      // Usar directamente el sistema de reglas inteligente
+      assistantReply = await getSmartChatResponse(message, history, userId);
+    }
 
     const insertMsgResult = await pool.query(
       'INSERT INTO chat_mensaje (conversacion_id, rol, contenido) VALUES ($1, $2, $3) RETURNING id',
@@ -69,10 +82,12 @@ export async function sendMessage(req, res, next) {
 
     res.json({
       reply: assistantReply.reply,
-      action: assistantReply.action || null, 
+      action: assistantReply.action || null,
+      actions: assistantReply.actions || null,
+      links: assistantReply.links || null,
       sessionId: currentSessionId,
       conversationId,
-      messageId: assistantMessageId, 
+      messageId: assistantMessageId,
     });
   } catch (error) {
     next(error);
