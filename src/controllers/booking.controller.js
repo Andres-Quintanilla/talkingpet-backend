@@ -4,25 +4,87 @@ import { bookingSchema } from '../validators/booking.validator.js';
 export async function create(req, res, next) {
   try {
     const data = bookingSchema.parse(req.body);
+
+    const usuarioId = req.user.id;
+    const mascotaId = data.mascota_id || null;
+    const servicioId = data.servicio_id;
+    const modalidad = data.modalidad;
+    const fecha = data.fecha;
+    const hora = data.hora;
+    const comentarios = data.comentarios || null;
+
+    // 1. Obtener duración del servicio solicitado
+    const { rows: svc } = await pool.query(
+      `SELECT duracion_minutos FROM servicio WHERE id = $1`,
+      [servicioId]
+    );
+
+    if (!svc.length) {
+      return res.status(404).json({ error: "Servicio no encontrado" });
+    }
+
+    const duracion = svc[0].duracion_minutos;
+
+    // 2. Obtener citas confirmadas que podrían solaparse
+    const { rows: citas } = await pool.query(
+      `SELECT c.hora, s.duracion_minutos
+       FROM cita c
+       JOIN servicio s ON c.servicio_id = s.id
+       WHERE c.fecha = $1
+         AND c.estado IN ('confirmada','realizada')`,
+      [fecha]
+    );
+
+    const inicioNueva = new Date(`${fecha}T${hora}`);
+    const finNueva = new Date(inicioNueva.getTime() + duracion * 60000);
+
+    let haySolape = false;
+
+    for (const cita of citas) {
+      const inicioCita = new Date(`${fecha}T${cita.hora}`);
+      const finCita = new Date(
+        inicioCita.getTime() + cita.duracion_minutos * 60000
+      );
+
+      const seSolapan =
+        inicioNueva < finCita && finNueva > inicioCita;
+
+      if (seSolapan) {
+        haySolape = true;
+        break;
+      }
+    }
+
+    if (haySolape) {
+      return res.status(400).json({
+        error:
+          "La hora seleccionada ya no está disponible. Por favor elige otra hora.",
+      });
+    }
+
+    // 3. Guardar cita (pero en estado pendiente porque todavía NO está pagada)
     const { rows } = await pool.query(
-      `INSERT INTO cita (usuario_id, mascota_id, servicio_id, empleado_id, modalidad, estado, fecha, hora, comentarios)
+      `INSERT INTO cita 
+         (usuario_id, mascota_id, servicio_id, empleado_id, modalidad, estado, fecha, hora, comentarios)
        VALUES ($1,$2,$3,NULL,$4,'pendiente',$5,$6,$7)
        RETURNING *`,
       [
-        req.user.id,
-        data.mascota_id || null,
-        data.servicio_id,
-        data.modalidad,
-        data.fecha,
-        data.hora,
-        data.comentarios || null,
+        usuarioId,
+        mascotaId,
+        servicioId,
+        modalidad,
+        fecha,
+        hora,
+        comentarios,
       ]
     );
+
     res.status(201).json(rows[0]);
   } catch (e) {
     next(e);
   }
 }
+
 
 export async function mine(req, res, next) {
   try {
@@ -126,6 +188,7 @@ export async function getAvailability(req, res, next) {
         .json({ error: 'Fecha y servicio_id son requeridos' });
     }
 
+    // Duración del servicio que el cliente quiere agendar
     const { rows: serviceRows } = await pool.query(
       'SELECT duracion_minutos FROM servicio WHERE id = $1',
       [servicio_id]
@@ -135,57 +198,52 @@ export async function getAvailability(req, res, next) {
     }
     const duracion = serviceRows[0].duracion_minutos;
 
+    // Citas YA confirmadas en esa fecha (pagadas)
     const { rows: citas } = await pool.query(
       `SELECT c.hora, s.duracion_minutos 
        FROM cita c
        JOIN servicio s ON c.servicio_id = s.id
-       WHERE c.fecha = $1 AND c.estado IN ('pendiente', 'confirmada')`,
+       WHERE c.fecha = $1
+         AND c.estado IN ('confirmada', 'realizada')`,
       [fecha]
     );
 
     const horariosDisponibles = [];
-    const horaInicio = 9;
-    const horaFin = 18;
-    const slotMinutos = 30;
+    const horaInicio = 9;   // 09:00
+    const horaFin = 18;     // 18:00
+    const slotMinutos = 30; // intervalos de 30 min
 
     for (let H = horaInicio; H < horaFin; H++) {
       for (let M = 0; M < 60; M += slotMinutos) {
-        const horaSlot = new Date(
+        const inicioSlot = new Date(
           `${fecha}T${String(H).padStart(2, '0')}:${String(M).padStart(
             2,
             '0'
-          )}:00Z`
+          )}:00`
         );
-        const horaFinSlot = new Date(horaSlot.getTime() + duracion * 60000);
+        const finSlot = new Date(inicioSlot.getTime() + duracion * 60000);
 
         let ocupado = false;
 
         for (const cita of citas) {
-          const citaInicio = new Date(`${fecha}T${cita.hora}Z`);
+          const citaInicio = new Date(`${fecha}T${cita.hora}`);
           const citaFin = new Date(
             citaInicio.getTime() + cita.duracion_minutos * 60000
           );
 
-          const seSolapa = horaSlot < citaFin && horaFinSlot > citaInicio;
-
+          const seSolapa = inicioSlot < citaFin && finSlot > citaInicio;
           if (seSolapa) {
             ocupado = true;
             break;
           }
         }
 
-        if (!ocupado && horaFinSlot.getUTCHours() < horaFin) {
-          horariosDisponibles.push(
-            horaSlot.toUTCString().substring(17, 22)
-          );
-        } else if (
-          !ocupado &&
-          horaFinSlot.getUTCHours() === horaFin &&
-          horaFinSlot.getUTCMinutes() === 0
-        ) {
-          horariosDisponibles.push(
-            horaSlot.toUTCString().substring(17, 22)
-          );
+        if (!ocupado && finSlot.getHours() <= horaFin) {
+          const label = `${String(H).padStart(2, '0')}:${String(M).padStart(
+            2,
+            '0'
+          )}`;
+          horariosDisponibles.push(label);
         }
       }
     }
@@ -197,6 +255,7 @@ export async function getAvailability(req, res, next) {
     next(e);
   }
 }
+
 
 export async function getAdminSummary(req, res, next) {
   try {

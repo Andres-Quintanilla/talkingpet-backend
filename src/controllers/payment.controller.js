@@ -32,7 +32,7 @@ async function processCourseEnrollments(client, orderId, userId) {
 
         if (cursoRows[0]) {
           const curso = cursoRows[0];
-          
+
           // Inscribir al usuario en el curso
           await client.query(
             `INSERT INTO inscripcion_curso
@@ -41,7 +41,7 @@ async function processCourseEnrollments(client, orderId, userId) {
              ON CONFLICT (usuario_id, curso_id) DO NOTHING`,
             [userId, item.curso_id, curso.titulo, curso.precio]
           );
-          
+
           console.log(`✅ Usuario ${userId} inscrito en curso ${item.curso_id}`);
         }
       }
@@ -51,6 +51,52 @@ async function processCourseEnrollments(client, orderId, userId) {
     // No lanzamos el error para no afectar el flujo principal del pago
   }
 }
+
+// Función auxiliar para crear citas de servicios después de pago
+// Función auxiliar para crear / actualizar citas de servicios después de pago
+// Función auxiliar para crear / actualizar citas de servicios después de pago
+async function processServiceBookings(client, orderId, userId) {
+  try {
+    // 1) Buscar citas pendientes del usuario que aún no tienen pedido asociado
+    const { rows: citasPendientes } = await client.query(
+      `SELECT id, fecha, hora, estado
+       FROM cita
+       WHERE usuario_id = $1
+         AND estado = 'pendiente'
+         AND pedido_id IS NULL
+         AND fecha >= CURRENT_DATE
+       ORDER BY fecha, hora`,
+      [userId]
+    );
+
+    if (!citasPendientes.length) {
+      console.log(
+        `No hay citas pendientes para usuario ${userId} al pagar pedido ${orderId}`
+      );
+      return;
+    }
+
+    const ids = citasPendientes.map((c) => c.id);
+
+    // 2) Marcar esas citas como confirmadas y enlazarlas al pedido
+    await client.query(
+      `UPDATE cita
+         SET estado = 'confirmada',
+             pedido_id = $2
+       WHERE id = ANY($1::int[])`,
+      [ids, orderId]
+    );
+
+    console.log(
+      `✅ ${ids.length} cita(s) confirmada(s) para usuario ${userId} al pagar pedido ${orderId}`
+    );
+  } catch (err) {
+    console.error('Error procesando citas de servicios:', err);
+    // No lanzamos para no romper el flujo de pago
+  }
+}
+
+
 
 export async function createStripeSession(req, res, next) {
   if (!stripe) return stripeRequired(res);
@@ -84,9 +130,9 @@ export async function createStripeSession(req, res, next) {
 
 export async function stripeWebhook(req, res) {
   if (!stripe) return stripeRequired(res);
-  
+
   const client = await pool.connect();
-  
+
   try {
     const sig = req.headers['stripe-signature'];
     const event = stripe.webhooks.constructEvent(
@@ -100,22 +146,26 @@ export async function stripeWebhook(req, res) {
       const amount = session.amount_total / 100;
 
       await client.query('BEGIN');
-      
+
       await client.query(
         `INSERT INTO pago (pedido_id, monto, metodo, estado, referencia) VALUES ($1,$2,'tarjeta','pagado',$3)`,
         [orderId, amount, session.id]
       );
-      
+
       await client.query(`UPDATE pedido SET estado='pagado' WHERE id=$1`, [orderId]);
-      
+
       // Procesar inscripciones de cursos
       await processCourseEnrollments(client, orderId, userId);
-      
+      // Crear citas de servicios ya confirmadas
+      await processServiceBookings(client, orderId, userId);
+
+
+
       await client.query('COMMIT');
-      
+
       console.log(`✅ Pago confirmado para pedido #${orderId}`);
     }
-    
+
     res.json({ received: true });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -130,14 +180,14 @@ export async function stripeWebhook(req, res) {
 export async function generateQrPayment(req, res, next) {
   try {
     const { order_id } = req.body;
-    
+
     // Validar que el pedido existe y pertenece al usuario
     const { rows } = await pool.query(
       'SELECT * FROM pedido WHERE id=$1 AND usuario_id=$2',
       [order_id, req.user.id]
     );
     const order = rows[0];
-    
+
     if (!order) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
@@ -236,20 +286,20 @@ export async function checkQrPaymentStatus(req, res, next) {
 // Simular pago QR (solo para desarrollo/testing)
 export async function simulateQrPayment(req, res, next) {
   const client = await pool.connect();
-  
+
   try {
     const { order_id } = req.body;
     const { rows } = await client.query(
-      'SELECT * FROM pedido WHERE id=$1 AND usuario_id=$2', 
+      'SELECT * FROM pedido WHERE id=$1 AND usuario_id=$2',
       [order_id, req.user.id]
     );
-    
+
     if (!rows[0]) {
       return res.status(404).json({ error: 'Pedido no encontrado' });
     }
 
     await client.query('BEGIN');
-    
+
     // Actualizar el pago existente a pagado
     await client.query(
       `UPDATE pago 
@@ -257,13 +307,17 @@ export async function simulateQrPayment(req, res, next) {
        WHERE pedido_id=$1 AND metodo='qr' AND estado='pendiente'`,
       [order_id]
     );
-    
+
     // Actualizar el estado del pedido
     await client.query(`UPDATE pedido SET estado='pagado' WHERE id=$1`, [order_id]);
-    
+
     // Procesar inscripciones de cursos
     await processCourseEnrollments(client, order_id, req.user.id);
-    
+
+    // Crear citas confirmadas para servicios
+    await processServiceBookings(client, order_id, req.user.id);
+
+
     await client.query('COMMIT');
 
     console.log(`✅ Pago QR simulado exitoso para pedido #${order_id}`);

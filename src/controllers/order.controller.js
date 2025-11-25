@@ -25,7 +25,7 @@ export async function createOrderFromPayload(req, res, next) {
     // 1) Crear pedido con un total provisional (lo actualizaremos al final)
     const { rows: orderRows } = await client.query(
       `INSERT INTO pedido (usuario_id, total, estado, fecha_pedido, direccion_envio)
-       VALUES ($1, $2, 'pendiente', NOW(), $3)
+       VALUES ($1, $2, 'pagado', NOW(), $3)
        RETURNING id, total, estado`,
       [userId, Number(total) || 0, direccion_envio]
     );
@@ -226,7 +226,7 @@ export async function createOrderFromPayload(req, res, next) {
                )
                VALUES (
                  $1, $2, $3, NULL,
-                 $4, 'pendiente',
+                 $4, 'confirmada',
                  $5, $6, $7,
                  $8,
                  $9, $10, $11
@@ -270,6 +270,39 @@ export async function createOrderFromPayload(req, res, next) {
     const shippingNum = Number(shipping || 0);
     const computedTotal = computedSubtotal + shippingNum;
 
+    // === SI EL MÉTODO DE PAGO ES "saldo" → descontar del usuario ===
+    // === SI EL MÉTODO DE PAGO ES "saldo" → descontar del usuario ===
+    if (metodo_pago === 'saldo') {
+      console.log("Pagando con saldo..."); // <-- AÑÁDE ESTE LOG
+
+      const { rows: userRows } = await client.query(
+        `SELECT saldo FROM usuario WHERE id = $1 FOR UPDATE`,
+        [userId]
+      );
+
+      const saldoActual = Number(userRows[0]?.saldo || 0);
+
+      console.log("Saldo actual:", saldoActual, "Total:", computedTotal); // <-- LOG
+
+      if (saldoActual < computedTotal) {
+        await client.query('ROLLBACK');
+        return res.status(400).json({
+          error: `Saldo insuficiente. Tu saldo disponible es B/. ${saldoActual.toFixed(
+            2
+          )} y el total es B/. ${computedTotal.toFixed(2)}.`,
+        });
+      }
+
+      // Descontar saldo
+      await client.query(
+        `UPDATE usuario SET saldo = saldo - $1 WHERE id = $2`,
+        [computedTotal, userId]
+      );
+
+      console.log("Saldo descontado OK"); // <-- LOG
+    }
+
+
     await client.query(
       `UPDATE pedido
        SET total = $1
@@ -284,7 +317,7 @@ export async function createOrderFromPayload(req, res, next) {
       total: computedTotal,
       estado: pedido.estado,
       message:
-        'Pedido creado correctamente. Las citas asociadas se han registrado como pendientes.',
+        'Pedido creado correctamente. Las citas asociadas se han registrado como confirmadas.',
     });
   } catch (e) {
     await client.query('ROLLBACK');
@@ -294,6 +327,7 @@ export async function createOrderFromPayload(req, res, next) {
     client.release();
   }
 }
+
 
 /**
  * === FLUJO ANTIGUO: checkout usando la tabla carrito ===
