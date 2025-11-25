@@ -1,5 +1,16 @@
 import { pool } from '../config/db.js';
 
+function normalizeCategory(value) {
+  if (!value) return null;
+  const s = String(value).trim().toLowerCase();
+  return s || null;
+}
+
+function normalizeEstado(estado) {
+  if (typeof estado !== 'string') return null;
+  return estado === 'publicado' ? 'publicado' : 'borrador';
+}
+
 export async function list(req, res, next) {
   try {
     const page = Number(req.query.page) || 1;
@@ -122,6 +133,9 @@ export async function create(req, res, next) {
         .json({ error: 'El stock debe ser un número mayor o igual a 0' });
     }
 
+    const categoriaNorm = normalizeCategory(categoria);
+    const estadoNorm = normalizeEstado(estado);
+
     const { rows } = await pool.query(
       `INSERT INTO producto
         (nombre, descripcion, precio, stock, categoria, estado, es_destacado, imagen_url)
@@ -141,8 +155,8 @@ export async function create(req, res, next) {
         descripcion || null,
         precioNum,
         stockNum,
-        categoria || null,
-        estado || 'borrador',
+        categoriaNorm,
+        estadoNorm || 'borrador',
         Boolean(es_destacado),
         imagen_url || null,
       ]
@@ -188,6 +202,14 @@ export async function update(req, res, next) {
         .json({ error: 'El stock debe ser un número mayor o igual a 0' });
     }
 
+    const categoriaNorm = normalizeCategory(categoria);
+    const estadoNorm = normalizeEstado(estado);
+
+    const esDestacadoNorm =
+      typeof es_destacado === 'boolean'
+        ? es_destacado
+        : es_destacado === 'true';
+
     const { rows } = await pool.query(
       `UPDATE producto
        SET
@@ -216,9 +238,9 @@ export async function update(req, res, next) {
         descripcion ?? null,
         precioNum,
         stockNum,
-        categoria ?? null,
-        estado ?? null,
-        es_destacado ?? null,
+        categoriaNorm,
+        estadoNorm,
+        es_destacado === undefined ? null : esDestacadoNorm,
         imagen_url ?? null,
       ]
     );
