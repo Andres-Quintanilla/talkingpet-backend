@@ -20,6 +20,25 @@ import {
   crearAlerta,
   completarAlerta
 } from '../services/medical-record.service.js';
+import { pool } from '../config/db.js';
+
+// Helper para verificar que la mascota pertenece al usuario
+async function verificarPropietarioMascota(mascotaId, userId, userRole) {
+  if (userRole === 'admin' || userRole === 'empleado_veterinario') {
+    return true;
+  }
+  
+  const { rows } = await pool.query(
+    'SELECT usuario_id FROM mascota WHERE id = $1',
+    [mascotaId]
+  );
+  
+  if (rows.length === 0) {
+    return false;
+  }
+  
+  return rows[0].usuario_id === userId;
+}
 
 export async function getExpedienteCompleto(req, res) {
   try {
@@ -91,18 +110,21 @@ export async function createExpedienteInicial(req, res) {
 export async function getVacunas(req, res) {
   try {
     const { id } = req.params;
-    const resultado = await obtenerVacunasMascota(id);
-
-    if (!resultado.exito) {
+    
+    // Verificar que la mascota pertenece al usuario
+    const tieneAcceso = await verificarPropietarioMascota(id, req.user.id, req.user.rol);
+    if (!tieneAcceso) {
       return res.status(404).json({
         success: false,
-        message: resultado.error
+        message: 'Mascota no encontrada'
       });
     }
+    
+    const vacunas = await obtenerVacunasMascota(id);
 
     res.json({
       success: true,
-      data: resultado.data
+      data: vacunas
     });
   } catch (error) {
     console.error('Error obteniendo vacunas:', error);
@@ -204,18 +226,20 @@ export async function deleteVacuna(req, res) {
 export async function getConsultas(req, res) {
   try {
     const { id } = req.params;
-    const resultado = await obtenerConsultasMascota(id);
-
-    if (!resultado.exito) {
+    
+    const tieneAcceso = await verificarPropietarioMascota(id, req.user.id, req.user.rol);
+    if (!tieneAcceso) {
       return res.status(404).json({
         success: false,
-        message: resultado.error
+        message: 'Mascota no encontrada'
       });
     }
+    
+    const consultas = await obtenerConsultasMascota(id);
 
     res.json({
       success: true,
-      data: resultado.data
+      data: consultas
     });
   } catch (error) {
     console.error('Error obteniendo consultas:', error);
@@ -264,18 +288,20 @@ export async function addConsulta(req, res) {
 export async function getMedicamentos(req, res) {
   try {
     const { id } = req.params;
-    const resultado = await obtenerMedicamentosActivos(id);
-
-    if (!resultado.exito) {
+    
+    const tieneAcceso = await verificarPropietarioMascota(id, req.user.id, req.user.rol);
+    if (!tieneAcceso) {
       return res.status(404).json({
         success: false,
-        message: resultado.error
+        message: 'Mascota no encontrada'
       });
     }
+    
+    const medicamentos = await obtenerMedicamentosActivos(id);
 
     res.json({
       success: true,
-      data: resultado.data
+      data: medicamentos
     });
   } catch (error) {
     console.error('Error obteniendo medicamentos:', error);
@@ -351,18 +377,11 @@ export async function updateMedicamento(req, res) {
 export async function getPeso(req, res) {
   try {
     const { id } = req.params;
-    const resultado = await obtenerHistorialPeso(id);
-
-    if (!resultado.exito) {
-      return res.status(404).json({
-        success: false,
-        message: resultado.error
-      });
-    }
+    const historialPeso = await obtenerHistorialPeso(id);
 
     res.json({
       success: true,
-      data: resultado.data
+      data: historialPeso
     });
   } catch (error) {
     console.error('Error obteniendo historial de peso:', error);
@@ -411,18 +430,20 @@ export async function addPeso(req, res) {
 export async function getAlergias(req, res) {
   try {
     const { id } = req.params;
-    const resultado = await obtenerAlergiasMascota(id);
-
-    if (!resultado.exito) {
+    
+    const tieneAcceso = await verificarPropietarioMascota(id, req.user.id, req.user.rol);
+    if (!tieneAcceso) {
       return res.status(404).json({
         success: false,
-        message: resultado.error
+        message: 'Mascota no encontrada'
       });
     }
+    
+    const alergias = await obtenerAlergiasMascota(id);
 
     res.json({
       success: true,
-      data: resultado.data
+      data: alergias
     });
   } catch (error) {
     console.error('Error obteniendo alergias:', error);
@@ -471,18 +492,11 @@ export async function addAlergia(req, res) {
 export async function getDocumentos(req, res) {
   try {
     const { id } = req.params;
-    const resultado = await obtenerDocumentosMascota(id);
-
-    if (!resultado.exito) {
-      return res.status(404).json({
-        success: false,
-        message: resultado.error
-      });
-    }
+    const documentos = await obtenerDocumentosMascota(id);
 
     res.json({
       success: true,
-      data: resultado.data
+      data: documentos
     });
   } catch (error) {
     console.error('Error obteniendo documentos:', error);
@@ -546,18 +560,11 @@ export async function addDocumento(req, res) {
 export async function getAlertas(req, res) {
   try {
     const { id } = req.params;
-    const resultado = await obtenerAlertasPendientes(id);
-
-    if (!resultado.exito) {
-      return res.status(404).json({
-        success: false,
-        message: resultado.error
-      });
-    }
+    const alertas = await obtenerAlertasPendientes(id);
 
     res.json({
       success: true,
-      data: resultado.data
+      data: alertas
     });
   } catch (error) {
     console.error('Error obteniendo alertas:', error);
