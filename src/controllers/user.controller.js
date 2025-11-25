@@ -69,6 +69,24 @@ export async function createUser(req, res, next) {
       return res.status(400).json({ error: 'Nombre y email son obligatorios.' });
     }
 
+    // === VALIDAR EMAIL ===
+    const emailCheck = await pool.query(
+      'SELECT 1 FROM usuario WHERE lower(email)=lower($1)',
+      [email]
+    );
+    if (emailCheck.rowCount > 0) {
+      return res.status(409).json({ error: 'El correo ya está registrado.' });
+    }
+
+    // === VALIDAR NOMBRE DE USUARIO ===
+    const userCheck = await pool.query(
+      'SELECT 1 FROM usuario WHERE lower(nombre)=lower($1)',
+      [nombre]
+    );
+    if (userCheck.rowCount > 0) {
+      return res.status(409).json({ error: 'El nombre de usuario ya está en uso.' });
+    }
+
     const allowedRoles = [
       'cliente',
       'admin',
@@ -80,14 +98,6 @@ export async function createUser(req, res, next) {
     const finalRol = rol || 'cliente';
     if (!allowedRoles.includes(finalRol)) {
       return res.status(400).json({ error: 'Rol inválido.' });
-    }
-
-    const exists = await pool.query(
-      'SELECT 1 FROM usuario WHERE lower(email)=lower($1) OR lower(nombre)=lower($2)',
-      [email, nombre]
-    );
-    if (exists.rowCount) {
-      return res.status(409).json({ error: 'Email o usuario ya existe.' });
     }
 
     const defaultPassword = '123456';
@@ -114,6 +124,8 @@ export async function createUser(req, res, next) {
   }
 }
 
+
+
 export async function updateUser(req, res, next) {
   try {
     const id = Number(req.params.id);
@@ -135,16 +147,35 @@ export async function updateUser(req, res, next) {
       return res.status(400).json({ error: 'Rol inválido' });
     }
 
+    // 🚫 No permitir que se modifique a sí mismo de forma peligrosa
     if (req.user.id === id) {
       if (rol && rol !== 'admin') {
-        return res
-          .status(400)
-          .json({ error: 'No puedes cambiar tu propio rol de administrador.' });
+        return res.status(400).json({ error: 'No puedes cambiar tu propio rol.' });
       }
       if (typeof activo === 'boolean' && !activo) {
-        return res
-          .status(400)
-          .json({ error: 'No puedes desactivar tu propia cuenta.' });
+        return res.status(400).json({ error: 'No puedes desactivar tu propia cuenta.' });
+      }
+    }
+
+    // === VALIDAR EMAIL DUPLICADO (si está cambiando email) ===
+    if (email) {
+      const emailCheck = await pool.query(
+        'SELECT 1 FROM usuario WHERE lower(email)=lower($1) AND id <> $2',
+        [email, id]
+      );
+      if (emailCheck.rowCount > 0) {
+        return res.status(409).json({ error: 'El correo ya está registrado por otro usuario.' });
+      }
+    }
+
+    // === VALIDAR NOMBRE DE USUARIO DUPLICADO ===
+    if (nombre) {
+      const userCheck = await pool.query(
+        'SELECT 1 FROM usuario WHERE lower(nombre)=lower($1) AND id <> $2',
+        [nombre, id]
+      );
+      if (userCheck.rowCount > 0) {
+        return res.status(409).json({ error: 'El nombre de usuario ya está en uso por otro usuario.' });
       }
     }
 
@@ -179,6 +210,7 @@ export async function updateUser(req, res, next) {
     next(e);
   }
 }
+
 
 export async function deleteUser(req, res, next) {
   try {

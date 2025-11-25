@@ -22,52 +22,95 @@ function sign(u) {
 export async function register(req, res, next) {
   try {
     const { nombre, email, contrasena, telefono } = req.body;
-    if (!nombre || !email || !contrasena)
-      return res.status(400).json({ error: 'Faltan datos' });
 
-    const exists = await pool.query(
-      'SELECT 1 FROM usuario WHERE lower(email)=lower($1) OR lower(nombre)=lower($2)',
-      [email, nombre]
+    // Validaciones básicas de campos
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ error: 'El nombre de usuario es obligatorio.' });
+    }
+    if (!email || !email.trim()) {
+      return res.status(400).json({ error: 'El correo electrónico es obligatorio.' });
+    }
+    if (!contrasena || contrasena.length < 6) {
+      return res.status(400).json({ error: 'La contraseña debe tener al menos 6 caracteres.' });
+    }
+
+    // Validar email duplicado
+    const emailCheck = await pool.query(
+      'SELECT 1 FROM usuario WHERE lower(email)=lower($1)',
+      [email]
     );
-    if (exists.rowCount)
-      return res.status(409).json({ error: 'Email o usuario ya existe' });
+    if (emailCheck.rowCount > 0) {
+      return res.status(409).json({ error: 'El correo ya está registrado.' });
+    }
+
+    // Validar nombre de usuario duplicado
+    const userCheck = await pool.query(
+      'SELECT 1 FROM usuario WHERE lower(nombre)=lower($1)',
+      [nombre]
+    );
+    if (userCheck.rowCount > 0) {
+      return res.status(409).json({ error: 'El nombre de usuario ya está en uso.' });
+    }
 
     const hash = await bcrypt.hash(contrasena, 10);
+
     const { rows } = await pool.query(
       `INSERT INTO usuario (nombre, email, telefono, contrasena)
        VALUES ($1,$2,$3,$4)
-       RETURNING id, nombre, email, rol, saldo, tema`, 
-      [nombre, email, telefono || null, hash]
+       RETURNING id, nombre, email, rol, saldo, tema`,
+      [nombre.trim(), email.trim(), telefono || null, hash]
     );
+
     return res.status(201).json(sign(rows[0]));
   } catch (e) {
     next(e);
   }
 }
 
+
 export async function login(req, res, next) {
   try {
     const { email, nombre, contrasena } = req.body;
 
-    if ((!email && !nombre) || !contrasena) {
-      return res
-        .status(400)
-        .json({ error: 'Email o usuario y contraseña requeridos' });
+    // Validación de campos vacíos
+    if ((!email && !nombre)) {
+      return res.status(400).json({ error: 'Ingresa tu correo o nombre de usuario.' });
+    }
+    if (!contrasena) {
+      return res.status(400).json({ error: 'Ingresa tu contraseña.' });
     }
 
+    // Buscar usuario por correo o username
     const { rows } = await pool.query(
       `SELECT * FROM usuario
-       WHERE (lower(email)=lower($1) OR lower(nombre)=lower($2)) AND activo=TRUE
+       WHERE (lower(email)=lower($1) OR lower(nombre)=lower($2))
        LIMIT 1`,
       [email || '', nombre || '']
     );
+
     const u = rows[0];
-    if (!u) return res.status(401).json({ error: 'Credenciales inválidas' });
 
+    // Usuario no encontrado
+    if (!u) {
+      return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
+    }
+
+    // Usuario encontrado pero está inactivo
+    if (!u.activo) {
+      return res.status(403).json({
+        error: 'Tu cuenta está inactiva. Contacta al administrador.'
+      });
+    }
+
+    // Contraseña incorrecta
     const ok = await bcrypt.compare(contrasena, u.contrasena);
-    if (!ok) return res.status(401).json({ error: 'Credenciales inválidas' });
+    if (!ok) {
+      return res.status(401).json({ error: 'Usuario o contraseña incorrectos.' });
+    }
 
+    // OK: devolver token + datos
     return res.json(sign(u));
+
   } catch (e) {
     next(e);
   }
